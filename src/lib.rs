@@ -1,4 +1,6 @@
 use cfg_if::cfg_if;
+use log::{info, warn};
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -22,9 +24,11 @@ pub async fn run() -> Result<(), anyhow::Error> {
     }
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop)?;
-
+    warn!("Doing something");
     #[cfg(target_arch = "wasm32")]
     {
+        // Winit prevents sizing with CSS, so we have to set
+        // the size manually when on web.
         use winit::dpi::PhysicalSize;
         window.set_inner_size(PhysicalSize::new(450, 400));
 
@@ -37,7 +41,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 dst.append_child(&canvas).ok()?;
                 Some(())
             })
-            .expect("couldn't append canvas to document body");
+            .expect("Couldn't append canvas to document body.");
     }
 
     let mut state = state::State::new(window).await;
