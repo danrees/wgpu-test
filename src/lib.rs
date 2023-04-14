@@ -1,5 +1,5 @@
 use cfg_if::cfg_if;
-use log::{info, warn};
+use log::warn;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -10,6 +10,7 @@ use winit::{
     window::WindowBuilder,
 };
 
+mod draw;
 mod state;
 
 #[cfg_attr(target_arch = "wam32", wasm_bindgen(start))]
