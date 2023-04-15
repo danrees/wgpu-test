@@ -1,4 +1,4 @@
-use wgpu_test::run;
+use wgpu_test::start;
 fn main() {
-    pollster::block_on(run()).unwrap();
+    pollster::block_on(start());
 }

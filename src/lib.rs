@@ -12,9 +12,14 @@ use winit::{
 
 mod draw;
 mod state;
+mod texture;
 
-#[cfg_attr(target_arch = "wam32", wasm_bindgen(start))]
-pub async fn run() -> Result<(), anyhow::Error> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
+pub async fn start() {
+    run().await.expect("unable to run program")
+}
+
+async fn run() -> Result<(), anyhow::Error> {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
