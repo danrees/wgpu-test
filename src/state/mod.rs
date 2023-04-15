@@ -3,9 +3,11 @@ use wgpu::util::DeviceExt;
 use winit::{event::WindowEvent, window::Window};
 
 mod camera;
+mod resource;
 
 use crate::{
-    draw::{self, Vertex},
+    draw::{self, ModelVertex, Vertex},
+    model::{self, DrawModel},
     texture,
 };
 
@@ -90,9 +92,7 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    num_indices: u32,
     diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture, // NEW
     camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -101,6 +101,7 @@ pub struct State {
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
     depth_texture: texture::Texture,
+    obj_model: model::Model,
 }
 
 impl State {
@@ -141,14 +142,15 @@ impl State {
             )
             .await
             .unwrap();
+        const SPACE_BETWEEN: f32 = 3.0;
+
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = cgmath::Vector3 {
-                        x: x as f32,
-                        y: 0.0,
-                        z: z as f32,
-                    };
+                    let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+                    let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+
+                    let position = cgmath::Vector3 { x: x, y: 0.0, z: z };
                     let rotation = if position.is_zero() {
                         cgmath::Quaternion::from_axis_angle(
                             cgmath::Vector3::unit_z(),
@@ -218,6 +220,11 @@ impl State {
                 ],
                 label: Some("texture_bind_group_layout"),
             });
+
+        let obj_model =
+            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
 
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
@@ -302,7 +309,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc(), InstanceRaw::desc()],
+                buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -352,7 +359,6 @@ impl State {
             contents: bytemuck::cast_slice(sample_indecies.as_slice()),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let num_indices = sample_indecies.len() as u32;
         Self {
             window,
             surface,
@@ -363,9 +369,7 @@ impl State {
             render_pipeline,
             vertex_buffer,
             index_buffer,
-            num_indices,
             diffuse_bind_group,
-            diffuse_texture,
             camera,
             camera_uniform,
             camera_bind_group,
@@ -374,6 +378,7 @@ impl State {
             instances,
             instance_buffer,
             depth_texture,
+            obj_model,
         }
     }
 
@@ -442,13 +447,20 @@ impl State {
                     stencil_ops: None,
                 }),
             });
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_pipeline(&self.render_pipeline);
+
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+
+            render_pass.draw_model_instanced(
+                &self.obj_model,
+                0..self.instances.len() as u32,
+                &self.camera_bind_group,
+            )
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

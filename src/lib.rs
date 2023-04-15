@@ -11,6 +11,7 @@ use winit::{
 };
 
 mod draw;
+mod model;
 mod state;
 mod texture;
 
