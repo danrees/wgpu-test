@@ -3,7 +3,11 @@ use std::io::{BufReader, Cursor};
 use cfg_if::cfg_if;
 use wgpu::util::DeviceExt;
 
-use crate::{draw, model, texture};
+use crate::{
+    draw::{self, ModelVertex},
+    model::{self, Material, Mesh, Model},
+    texture::{self},
+};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -49,6 +53,7 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
             let path = std::path::Path::new(env!("OUT_DIR"))
                 .join("res")
                 .join(file_name);
+            println!("{:?}", path);
             let data = std::fs::read(path)?;
         }
     }
@@ -151,4 +156,79 @@ pub async fn load_model(
         .collect::<Vec<_>>();
 
     Ok(model::Model { meshes, materials })
+}
+
+pub async fn load_stl(
+    file_name: &str,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+) -> anyhow::Result<model::Model> {
+    let obj = load_binary(file_name).await?;
+    let mut cursor = Cursor::new(obj);
+
+    let stl = stl_io::read_stl(&mut cursor)?;
+
+    let indexed_vertices = stl
+        .vertices
+        .into_iter()
+        .map(|v| ModelVertex {
+            position: v.into(),
+            normal: [0.0, 0.0, 0.0],
+            tex_coords: [0.0, 0.0],
+        })
+        .collect::<Vec<_>>();
+
+    let indexed_triangles_vertices = stl
+        .faces
+        .iter()
+        .flat_map(|f| f.vertices)
+        .map(|f| f as u32)
+        .collect::<Vec<_>>();
+
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(""),
+        contents: bytemuck::cast_slice(&indexed_vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: None,
+        contents: bytemuck::cast_slice(&indexed_triangles_vertices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    let mesh = Mesh {
+        vertex_buffer,
+        index_buffer,
+        name: String::from(""),
+        material: 0 as usize,
+        num_elements: indexed_triangles_vertices.len() as u32,
+    };
+
+    //let samp = device.create_sampler(&wgpu::SamplerDescriptor { label: None, address_mode_u: (), address_mode_v: (), address_mode_w: (), mag_filter: (), min_filter: (), mipmap_filter: (), lod_min_clamp: (), lod_max_clamp: (), compare: (), anisotropy_clamp: (), border_color: () })
+    let diffuse_texture = load_texture("cube-normal.png", device, queue).await?;
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+            },
+        ],
+        label: None,
+    });
+    let mat = Material {
+        name: "Test".to_string(),
+        diffuse_texture,
+        bind_group,
+    };
+
+    Ok(Model {
+        meshes: vec![mesh],
+        materials: vec![mat],
+    })
 }

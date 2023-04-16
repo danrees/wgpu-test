@@ -221,10 +221,14 @@ impl State {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let obj_model =
-            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
+        let obj_model = resource::load_stl(
+            "goblin-chief.stl",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        )
+        .await
+        .unwrap();
 
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
